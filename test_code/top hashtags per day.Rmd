@@ -1,0 +1,111 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(kableExtra)
+library(glue)
+library(dplyr)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+```{r}
+file_names <- list.files("/Users/shaomanlee/Documents/twitterscraper-master/data/ssmcorpus", full.names = TRUE)
+tweet_files <- vector(mode = "list", length = length(file_names))
+for (i in seq_along(file_names)) {
+  tweet_files[[i]] <- read_csv(file_names[i])
+}
+tweets_raw <- bind_rows(tweet_files)
+tweets_raw %>% select(fullname, text)
+```
+
+```{r}
+tweets <- tweets_raw %>% select(-html) %>% distinct
+pct_unique <- ( nrow(tweets) / nrow(tweets_raw) ) * 100
+glue::glue("There are {nrow(tweets)} unique tweets out of \\
+{nrow(tweets_raw)} total ({round(pct_unique,2)}% unique).")
+saveRDS(tweets, file = "unique_tweets_0410.rds")
+write.csv(tweets,"unique_tweets.csv", row.names = FALSE)
+```
+
+
+```{r}
+tweet_hashtags <- tweets %>% 
+  unnest_tokens(word, text, "tweets", strip_punct=TRUE) %>% 
+  filter(str_detect(word, "^#")) %>% 
+  count(word, sort = TRUE)
+tweet_hashtags
+write.csv(tweet_hashtags,"tweet_hashtags.csv", row.names = FALSE)
+```
+```{r}
+tweets <- readRDS("/Users/shaomanlee/Documents/twitterscraper-master/data/unique_tweets_0410.rds")
+```
+
+```{r}
+hashtags <- tweets %>% 
+  unnest_tokens(word, text, "tweets") %>% 
+  filter(str_detect(word, "^#"))
+```
+
+
+```{r}
+hashtags %>% 
+  count(word, sort=T) %>% 
+  top_n(10) %>% 
+  ggplot(aes(x = fct_reorder(word, n), y = n)) +
+    geom_col(fill = "red") +
+    labs(title = "Top 10 Same Sex Marriage Hashtags",
+         subtitle = "November 2014 to July 2017",
+         x = "Hashtag", y = "Tweets (all time)") +
+    coord_flip() +
+    theme_minimal()
+#ggsave("Top_10_hashtags.pdf")
+```
+
+```{r}
+library(lubridate)
+scotus <- hashtags %>% 
+  filter(word == "#scotus") %>% 
+  mutate(month = floor_date(timestamp, "months"))
+ggplot(scotus, aes(x = month)) +
+  geom_bar(fill = "red") +
+  labs(title = "Tweet volume per month",
+    subtitle = "#scotus hashtag in same sex marriage discourse",
+    x = "Date (Month)", y = "Tweets")
+  theme_minimal() 
+ggsave("/Users/shaomanlee/Documents/twitterscraper-master/data/scotus_hashtag.pdf")
+```
+
+look at the days with the highest volumes of Twitter activity in same sex marriage discourse
+```{r}
+library(lubridate)
+tweets_per_day <- tweets %>% 
+  mutate(Date = date(timestamp)) %>% 
+  count(Date, sort=T) %>% 
+  rename("Total Tweets" = n)
+
+top_hashtag_per_day <- hashtags %>% 
+  mutate(Date = date(timestamp)) %>% 
+  count(Date, word) %>% 
+  group_by(Date) %>% 
+  filter(n == max(n)) %>% 
+  ungroup() %>% 
+  rename("Dominant Hashtag" = word,
+         "Hashtag Tweets" = n)
+
+tweets_per_day %>% 
+  left_join(top_hashtag_per_day) %>% 
+  top_n(20, `Total Tweets`) %>% 
+  kable("html")  %>% 
+  kable_styling()
+```
+
+```{r}
+write.csv(tweets_per_day,"tweets_per_day.csv", row.names = FALSE)
+write.csv(top_hashtag_per_day,"top_hashtag_per_day.csv", row.names = FALSE)
+```
+
